@@ -15,7 +15,7 @@ export default function Header() {
             About
           </Link>
           <Link href="/feedback" className="text-blue-600 hover:text-blue-500">
-            About
+            Feedback
           </Link>
         </div>
       </nav>
