@@ -8,13 +8,13 @@ export default function Header() {
           Concept Visualizer
         </Link>
         <div className="space-x-4">
-          <Link href="/" className="hover:text-blue-500">
+          <Link href="/" className=" text-blue-600 hover:text-blue-500">
             Home
           </Link>
-          <Link href="/about" className="hover:text-blue-500">
+          <Link href="/about" className=" text-blue-600 hover:text-blue-500">
             About
           </Link>
-          <Link href="/feedback" className="hover:text-blue-500">
+          <Link href="/feedback" className="text-blue-600 hover:text-blue-500">
             About
           </Link>
         </div>
