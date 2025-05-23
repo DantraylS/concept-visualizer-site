@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import ReactFlow, {
   Background,
   Node,
@@ -11,33 +11,21 @@ import ReactFlow, {
   OnNodesChange,
   OnEdgesChange,
   addEdge,
+  useReactFlow,
 } from "react-flow-renderer";
+import { v4 as uuidv4 } from "uuid";
 
 export default function Visualizer() {
-  const [jsonInput, setJsonInput] = useState<string>(() =>
-    JSON.stringify(
-      {
-        nodes: [
-          { id: "1", label: "Start", position: { x: 0, y: 0 } },
-          { id: "2", label: "Process", position: { x: 200, y: 100 } },
-          { id: "3", label: "End", position: { x: 400, y: 0 } },
-        ],
-        edges: [
-          { id: "e1-2", source: "1", target: "2" },
-          { id: "e2-3", source: "2", target: "3" },
-        ],
-      },
-      null,
-      2
-    )
-  );
-
+  const [jsonInput, setJsonInput] = useState<string>("");
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
+  const [nodeType, setNodeType] = useState<"rectangle" | "circle">("rectangle");
+  const [newLabel, setNewLabel] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
-  // Parse JSON live as user types
-  useEffect(() => {
+  const [initDone, setInitDone] = useState(false);
+
+  const parseJson = useCallback(() => {
     try {
       const parsed = JSON.parse(jsonInput);
 
@@ -46,9 +34,13 @@ export default function Visualizer() {
         data: { label: n.label },
         position: n.position,
         style: {
-          color: "black",
           background: "white",
           border: "1px solid #ccc",
+          borderRadius: n.type === "circle" ? "50%" : "8px",
+          padding: 10,
+          color: "black",
+          width: 100,
+          textAlign: "center",
         },
       }));
 
@@ -66,46 +58,118 @@ export default function Visualizer() {
     }
   }, [jsonInput]);
 
-  const onNodesChange: OnNodesChange = (changes) =>
-    setNodes((nds) => applyNodeChanges(changes, nds));
-  const onEdgesChange: OnEdgesChange = (changes) =>
-    setEdges((eds) => applyEdgeChanges(changes, eds));
+  useEffect(() => {
+    if (!initDone) {
+      setJsonInput(
+        JSON.stringify(
+          {
+            nodes: [
+              {
+                id: "1",
+                label: "Start",
+                type: "rectangle",
+                position: { x: 0, y: 0 },
+              },
+              {
+                id: "2",
+                label: "Middle",
+                type: "circle",
+                position: { x: 200, y: 100 },
+              },
+              {
+                id: "3",
+                label: "End",
+                type: "rectangle",
+                position: { x: 400, y: 0 },
+              },
+            ],
+            edges: [
+              { id: "e1-2", source: "1", target: "2" },
+              { id: "e2-3", source: "2", target: "3" },
+            ],
+          },
+          null,
+          2
+        )
+      );
+      setInitDone(true);
+    } else {
+      parseJson();
+    }
+  }, [jsonInput, initDone, parseJson]);
 
-  const handleExport = () => {
+  const updateJsonFromNodesEdges = (
+    updatedNodes: Node[],
+    updatedEdges: Edge[]
+  ) => {
     const data = {
-      nodes: nodes.map((n) => ({
+      nodes: updatedNodes.map((n) => ({
         id: n.id,
         label: n.data.label,
+        type: n.style?.borderRadius === "50%" ? "circle" : "rectangle",
         position: n.position,
       })),
-      edges: edges.map((e) => ({
+      edges: updatedEdges.map((e) => ({
         id: e.id,
         source: e.source,
         target: e.target,
       })),
     };
 
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "diagram.json";
-    link.click();
+    setJsonInput(JSON.stringify(data, null, 2));
   };
 
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setJsonInput(reader.result);
-      }
+  const handleAddNode = () => {
+    const newId = uuidv4();
+    const newNode: Node = {
+      id: newId,
+      data: { label: newLabel || `Node ${nodes.length + 1}` },
+      position: { x: Math.random() * 400, y: Math.random() * 300 },
+      style: {
+        background: "white",
+        border: "1px solid #ccc",
+        borderRadius: nodeType === "circle" ? "50%" : "8px",
+        padding: 10,
+        color: "black",
+        width: 100,
+        textAlign: "center",
+      },
     };
-    reader.readAsText(file);
+
+    const updatedNodes = [...nodes, newNode];
+    setNodes(updatedNodes);
+    updateJsonFromNodesEdges(updatedNodes, edges);
+    setNewLabel("");
+  };
+
+  const handleDeleteNode = (id: string) => {
+    const updatedNodes = nodes.filter((n) => n.id !== id);
+    const updatedEdges = edges.filter(
+      (e) => e.source !== id && e.target !== id
+    );
+    setNodes(updatedNodes);
+    setEdges(updatedEdges);
+    updateJsonFromNodesEdges(updatedNodes, updatedEdges);
+  };
+
+  const onNodesChange: OnNodesChange = (changes) =>
+    setNodes((nds) => {
+      const updated = applyNodeChanges(changes, nds);
+      updateJsonFromNodesEdges(updated, edges);
+      return updated;
+    });
+
+  const onEdgesChange: OnEdgesChange = (changes) =>
+    setEdges((eds) => {
+      const updated = applyEdgeChanges(changes, eds);
+      updateJsonFromNodesEdges(nodes, updated);
+      return updated;
+    });
+
+  const onNodeClick = (_: any, node: Node) => {
+    if (window.confirm(`Delete node "${node.data.label}"?`)) {
+      handleDeleteNode(node.id);
+    }
   };
 
   return (
@@ -119,28 +183,31 @@ export default function Visualizer() {
           className="w-full h-80 p-3 border border-gray-300 rounded font-mono text-sm text-black bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="Paste or type your JSON here"
         />
-        <div className="flex gap-2 mt-3">
-          <label className="bg-gray-600 px-4 py-2 rounded cursor-pointer hover:bg-gray-300">
-            📥 Import
-            <input
-              type="file"
-              accept=".json"
-              className="hidden"
-              onChange={handleImport}
-            />
-          </label>
-          <button
-            onClick={handleExport}
-            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
+        {error && <p className="mt-2 text-red-600 text-sm">{error}</p>}
+
+        <div className="flex gap-2 mt-4">
+          <input
+            type="text"
+            placeholder="Label"
+            value={newLabel}
+            onChange={(e) => setNewLabel(e.target.value)}
+            className="border rounded px-3 py-2 text-sm"
+          />
+          <select
+            value={nodeType}
+            onChange={(e) => setNodeType(e.target.value as any)}
+            className="border rounded px-3 py-2 text-sm"
           >
-            📤 Export
+            <option value="rectangle">Rectangle</option>
+            <option value="circle">Circle</option>
+          </select>
+          <button
+            onClick={handleAddNode}
+            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+          >
+            ➕ Add Node
           </button>
         </div>
-        {error && (
-          <p className="mt-2 text-red-600 text-sm whitespace-pre-line">
-            {error}
-          </p>
-        )}
       </div>
 
       {/* Right Panel */}
@@ -152,6 +219,7 @@ export default function Visualizer() {
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
+            onNodeClick={onNodeClick}
             fitView
           >
             <Background />
